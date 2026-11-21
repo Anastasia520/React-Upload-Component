@@ -5,6 +5,10 @@
 @tailwind utilities;
 
 @layer base {
+    body {
+        @apply bg-surface text-primary;
+    }
+
     /* One visible focus style for every control. An outline (not a box-shadow ring) also shows in forced-colours
        mode. The 2px offset shows the background, so the ring needs 3:1 against the surface colour. */
     :focus-visible {
