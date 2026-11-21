@@ -12,11 +12,11 @@ const TESTING_UPLOADS_CHUNKS_DIR = 'src/server/test/uploads-chunks';
 
 describe('E2E', () => {
     beforeAll(() => {
-        const uploadedFiles = readdirSync(TESTING_UPLOADS_DIR);
+        const uploadedFiles = readdirSync(TESTING_UPLOADS_DIR).filter((file) => file !== '.gitkeep');
         for (const file of uploadedFiles) {
             rmSync(join(TESTING_UPLOADS_DIR, file));
         }
-        const uploadedChunksFiles = readdirSync(TESTING_UPLOADS_CHUNKS_DIR);
+        const uploadedChunksFiles = readdirSync(TESTING_UPLOADS_CHUNKS_DIR).filter((file) => file !== '.gitkeep');
         for (const file of uploadedChunksFiles) {
             rmSync(join(TESTING_UPLOADS_CHUNKS_DIR, file));
         }

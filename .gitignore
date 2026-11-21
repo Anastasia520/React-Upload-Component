@@ -27,8 +27,10 @@ uploads/*
 !uploads/.gitkeep
 uploads-chunks/*
 !uploads-chunks/.gitkeep
-src/server/test/uploads
-src/server/test/uploads-chunks
+src/server/test/uploads/*
+!src/server/test/uploads/.gitkeep
+src/server/test/uploads-chunks/*
+!src/server/test/uploads-chunks/.gitkeep
 
 # Local, not part of the submission
 input/
