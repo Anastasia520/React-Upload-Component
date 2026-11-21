@@ -33,8 +33,9 @@ jobs:
             - name: Typecheck code
               run: npm run typecheck
 
-            # - name: Test server code
-            #   run: npm run test:server
+            - name: Test server code
+              run: npm run test:server
 
-            # - name: Test client code
-            #   run: npm run test:server
+            # `npm run test:client` starts watch mode, so CI runs the client tests once directly.
+            - name: Test client code
+              run: npx vitest run src/client
