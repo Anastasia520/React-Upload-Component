@@ -1,3 +1,13 @@
+@import './theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    /* One visible focus style for every control. An outline (not a box-shadow ring) also shows in forced-colours
+       mode. The 2px offset shows the background, so the ring needs 3:1 against the surface colour. */
+    :focus-visible {
+        @apply outline outline-2 outline-offset-2 outline-focus;
+    }
+}

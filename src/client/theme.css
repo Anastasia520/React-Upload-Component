@@ -1,0 +1,23 @@
+/*
+ * Brand colours: the one place to change when rebranding.
+ *
+ * Values are from Fondue (@frontify/fondue-tokens 5.2.0, light theme), except --color-line: Fondue's line colour
+ * is 50% transparent and too faint for borders and progress tracks, so the solid grey is used.
+ * Override them on any wrapper element to restyle only that area.
+ *
+ * Tailwind opacity modifiers (e.g. bg-primary/50) don't work with these colours. Add a named colour instead.
+ *
+ * When changing a colour, re-check contrast against --color-surface (and --color-surface-hover for button text and
+ * borders): text at least 4.5:1, and borders, progress bars and the focus ring at least 3:1 (WCAG 1.4.3 and 1.4.11).
+ */
+:root {
+    --color-primary: #111110; /* text, primary buttons, progress fill */
+    --color-primary-hover: #353533;
+    --color-secondary: #676763; /* secondary text */
+    --color-surface: #ffffff; /* background */
+    --color-surface-hover: #f0f0eb; /* hover background of outlined buttons */
+    --color-line: #878781; /* borders, progress track */
+    --color-error: #de2417;
+    --color-success: #168500;
+    --color-focus: #4196fb; /* focus ring */
+}
