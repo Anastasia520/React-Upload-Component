@@ -1,11 +1,13 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRef } from 'react';
-import { afterAll, afterEach, beforeAll, describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 
 import '@testing-library/jest-dom/vitest';
+import { addHiddenRule } from '../../test-utils/hiddenRule';
+
 import { FilePicker, type FilePickerProps } from './FilePicker';
 
 expect.extend(axeMatchers);
@@ -28,17 +30,7 @@ const countClicks = (input: HTMLInputElement): (() => number) => {
 };
 
 describe('FilePicker', () => {
-    // Browsers' default stylesheet hides `[hidden]` elements; happy-dom's doesn't, so the tests add that rule.
-    const browserDefaults = document.createElement('style');
-    browserDefaults.textContent = '[hidden] { display: none; }';
-
-    beforeAll(() => {
-        document.head.append(browserDefaults);
-    });
-
-    afterAll(() => {
-        browserDefaults.remove();
-    });
+    addHiddenRule();
 
     afterEach(() => {
         cleanup();

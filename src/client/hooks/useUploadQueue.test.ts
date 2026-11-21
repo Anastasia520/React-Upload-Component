@@ -1,40 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
-import { type RemoteFile, type UploadOptions, type UploadTransport } from '../transport/types';
+import { createFakeTransport } from '../test-utils/fakeTransport';
+import { type UploadTransport } from '../transport/types';
 
 import { type UploadItem, type UploadQueueOptions, useUploadQueue } from './useUploadQueue';
-
-type UploadCall = UploadOptions & {
-    file: File;
-    resolve: (stored?: RemoteFile) => void;
-    reject: (error: unknown) => void;
-};
-
-// A transport whose uploads the test settles by hand. Like the real one, it rejects with an AbortError when the
-// signal aborts, unless `honourAbort` is false (to simulate a result that arrives after a cancel).
-const createFakeTransport = ({ honourAbort = true } = {}) => {
-    const calls: UploadCall[] = [];
-    const transport: UploadTransport = {
-        upload: vi.fn(
-            (file: File, { signal, onProgress }: UploadOptions) =>
-                new Promise<RemoteFile>((resolve, reject) => {
-                    calls.push({
-                        file,
-                        signal,
-                        onProgress,
-                        resolve: (stored = { name: file.name, size: file.size }) => resolve(stored),
-                        reject,
-                    });
-                    if (honourAbort) {
-                        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-                    }
-                })
-        ),
-    };
-    const callsFor = (name: string): UploadCall[] => calls.filter((call) => call.file.name === name);
-    return { transport, calls, callsFor };
-};
 
 // Renders the hook and counts its renders, so the tests can check how often progress reaches state.
 const renderQueue = (transport: UploadTransport, options: UploadQueueOptions = {}) => {

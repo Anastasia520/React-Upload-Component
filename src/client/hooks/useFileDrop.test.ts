@@ -1,31 +1,9 @@
-import { cleanup, createEvent, fireEvent, renderHook } from '@testing-library/react';
+import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
+import { drag, filesTransfer, textTransfer } from '../test-utils/dragEvents';
+
 import { useFileDrop } from './useFileDrop';
-
-type Dropped = File | { folder: string };
-
-// A fake DataTransferItem. Browsers also return a File for a dropped folder; only its entry says it's a directory.
-const fakeItem = (dropped: Dropped) => {
-    const isDirectory = !(dropped instanceof File);
-    const file = isDirectory ? new File([], dropped.folder) : dropped;
-    return { kind: 'file', getAsFile: () => file, webkitGetAsEntry: () => ({ isDirectory, name: file.name }) };
-};
-
-// A fake DataTransfer for a drag of files and folders from the desktop.
-const filesTransfer = (dropped: Dropped[] = []) => ({ types: ['Files'], items: dropped.map(fakeItem) });
-
-// A drag of selected text, not files.
-const textTransfer = () => ({ types: ['text/plain'], items: [] });
-
-type DragType = 'dragEnter' | 'dragLeave' | 'dragOver' | 'drop';
-
-// Fires a drag event on the window and returns it, so a test can check defaultPrevented.
-const drag = (type: DragType, dataTransfer: object = filesTransfer()): Event => {
-    const event = createEvent[type](window, { dataTransfer });
-    fireEvent(window, event);
-    return event;
-};
 
 const renderDrop = () => {
     const onDrop = vi.fn();
