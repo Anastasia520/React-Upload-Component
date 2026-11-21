@@ -23,6 +23,13 @@ describe('DropOverlay', () => {
         expect(overlay()).toHaveClass('fixed', 'inset-0', 'pointer-events-none');
     });
 
+    it('should cover only its positioned parent when not full window', () => {
+        render(<DropOverlay visible fullWindow={false} />);
+
+        expect(overlay()).toHaveClass('absolute', 'inset-0', 'pointer-events-none');
+        expect(overlay()).not.toHaveClass('fixed');
+    });
+
     it.each([
         [true, 'visible opacity-100'],
         [false, 'invisible opacity-0'],
