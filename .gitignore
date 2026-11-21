@@ -23,9 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
-uploads
+uploads/*
 !uploads/.gitkeep
-uploads-chunks
+uploads-chunks/*
 !uploads-chunks/.gitkeep
 src/server/test/uploads
 src/server/test/uploads-chunks
