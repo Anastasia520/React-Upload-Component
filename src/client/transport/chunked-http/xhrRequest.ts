@@ -25,7 +25,7 @@ const pickMessage = (body: unknown): string | undefined => {
 export const createHttpError = (status: number, statusText: string, body: unknown): Error =>
     new Error(pickMessage(body) ?? (statusText || `Request failed with status ${status}`));
 
-const createAbortError = (): DOMException => new DOMException('The upload was aborted.', 'AbortError');
+export const createAbortError = (): DOMException => new DOMException('The upload was aborted.', 'AbortError');
 
 // XHR instead of fetch because fetch can't report upload progress.
 export const xhrRequest: FormDataRequest = (url, body, { signal, onProgress }) =>
