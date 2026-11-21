@@ -9,6 +9,9 @@ services:
             - .:/app
             # Keeps Linux-native binaries (esbuild) apart from the host checkout.
             - node_modules:/app/node_modules
+        tmpfs:
+            # Masks the local, untrusted input/ reference copy so tools (vitest, eslint) don't pick it up.
+            - /app/input
 
 volumes:
     node_modules:
