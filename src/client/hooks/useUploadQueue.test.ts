@@ -329,6 +329,16 @@ describe('useUploadQueue', () => {
 
             expect(summary(result.current.items)).toEqual(['d:uploading', 'e:uploading', 'f:queued']);
         });
+
+        it('should clear rejected rows as finished', () => {
+            const { transport } = createFakeTransport();
+            const { result } = renderQueue(transport, { accept: '.png' });
+            act(() => result.current.add([file('notes.txt'), file('photo.png')]));
+
+            act(() => result.current.clearFinished());
+
+            expect(summary(result.current.items)).toEqual(['photo.png:uploading']);
+        });
     });
 
     describe('same-name guard', () => {
@@ -347,18 +357,18 @@ describe('useUploadQueue', () => {
     });
 
     describe('restrictions', () => {
-        it('should add files that do not match accept as error rows without uploading them', () => {
+        it('should add files that do not match accept as rejected rows without uploading them', () => {
             const { transport, calls } = createFakeTransport();
             const { result } = renderQueue(transport, { accept: '.png,image/jpeg' });
 
             act(() => result.current.add([file('notes.txt', 'hi', 'text/plain'), file('photo.png')]));
 
-            expect(summary(result.current.items)).toEqual(['notes.txt:error', 'photo.png:uploading']);
+            expect(summary(result.current.items)).toEqual(['notes.txt:rejected', 'photo.png:uploading']);
             expect(result.current.items[0].error).toBe('File type not allowed');
             expect(calls.map((call) => call.file.name)).toEqual(['photo.png']);
         });
 
-        it('should add files rejected by validate as error rows with its message', () => {
+        it('should add files rejected by validate as rejected rows with its message', () => {
             const validate = vi.fn((candidate: File) => (candidate.size > 3 ? 'File is too large' : undefined));
             const { transport, calls } = createFakeTransport();
             const { result } = renderQueue(transport, { validate });
@@ -367,7 +377,7 @@ describe('useUploadQueue', () => {
             act(() => result.current.add([big, file('small', 'hi')]));
 
             expect(validate).toHaveBeenCalledWith(big);
-            expect(summary(result.current.items)).toEqual(['big:error', 'small:uploading']);
+            expect(summary(result.current.items)).toEqual(['big:rejected', 'small:uploading']);
             expect(result.current.items[0].error).toBe('File is too large');
             expect(calls).toHaveLength(1);
         });
@@ -381,14 +391,14 @@ describe('useUploadQueue', () => {
             expect(summary(result.current.items)).toEqual(['a:uploading']);
         });
 
-        it('should keep a rejected file as an error when it is retried', () => {
+        it('should keep a rejected file rejected when it is retried', () => {
             const { transport } = createFakeTransport();
             const { result } = renderQueue(transport, { accept: '.png' });
             act(() => result.current.add([file('notes.txt')]));
 
             act(() => result.current.retry(result.current.items[0].id));
 
-            expect(result.current.items[0]).toMatchObject({ status: 'error', error: 'File type not allowed' });
+            expect(result.current.items[0]).toMatchObject({ status: 'rejected', error: 'File type not allowed' });
             expect(transport.upload).not.toHaveBeenCalled();
         });
     });

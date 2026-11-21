@@ -3,7 +3,8 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { type RemoteFile, type UploadTransport } from '../transport/types';
 import { matchesAccept } from '../utils/matchesAccept';
 
-export type UploadStatus = 'queued' | 'uploading' | 'done' | 'error' | 'cancelled';
+// `rejected`: refused by `accept` or `validate` before uploading, so retrying can't help.
+export type UploadStatus = 'queued' | 'uploading' | 'done' | 'error' | 'cancelled' | 'rejected';
 
 export type UploadItem = { id: string; file: File; status: UploadStatus; loadedBytes: number; error?: string };
 
@@ -44,7 +45,8 @@ type Action =
     | { type: 'progress'; loaded: Map<string, number> }
     | { type: 'cancelAll' | 'clearFinished' };
 
-const isActive = (item: UploadItem): boolean => item.status === 'queued' || item.status === 'uploading';
+// Queued or uploading, as opposed to finished (done, error, cancelled or rejected).
+export const isActive = (item: UploadItem): boolean => item.status === 'queued' || item.status === 'uploading';
 
 // Changes the item only while it's in one of the `from` statuses, so a late result of a cancelled, removed or
 // replaced upload changes nothing.
@@ -116,8 +118,6 @@ export const useUploadQueue = (transport: UploadTransport, options: UploadQueueO
     // One controller per running upload. An upload's result only counts while its controller is still the current one.
     const controllers = useRef(new Map<string, AbortController>());
     const progress = useRef({ loaded: new Map<string, number>(), timer: undefined as number | undefined });
-    // Ids of files rejected by `accept` or `validate`; retrying them can't succeed.
-    const rejectedIds = useRef(new Set<string>());
     // The latest transport and options, so new inline callbacks neither restart nor duplicate uploads.
     const latest = useRef({ transport, options });
     latest.current = { transport, options };
@@ -214,11 +214,9 @@ export const useUploadQueue = (transport: UploadTransport, options: UploadQueueO
         const added = selected.map((file): UploadItem => {
             const id = `upload-${++lastId}`;
             const error = matchesAccept(file, accept) ? validate?.(file) : NOT_ALLOWED;
-            if (error) {
-                rejectedIds.current.add(id);
-                return { id, file, status: 'error', loadedBytes: 0, error };
-            }
-            return { id, file, status: 'queued', loadedBytes: 0 };
+            return error
+                ? { id, file, status: 'rejected', loadedBytes: 0, error }
+                : { id, file, status: 'queued', loadedBytes: 0 };
         });
         dispatch({ type: 'add', items: added });
     }, []);
@@ -235,11 +233,8 @@ export const useUploadQueue = (transport: UploadTransport, options: UploadQueueO
         dispatch({ type: 'cancelAll' });
     }, []);
 
-    const retry = useCallback((id: string): void => {
-        if (!rejectedIds.current.has(id)) {
-            dispatch({ type: 'retry', id });
-        }
-    }, []);
+    // The reducer retries only failed or cancelled files, so rejected files stay rejected.
+    const retry = useCallback((id: string): void => dispatch({ type: 'retry', id }), []);
 
     const remove = useCallback((id: string): void => {
         abortUpload(controllers.current, id);
