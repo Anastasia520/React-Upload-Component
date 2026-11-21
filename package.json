@@ -9,7 +9,7 @@
         "build": "vite build",
         "lint": "eslint --ext .ts,.tsx .",
         "typecheck": "tsc --noEmit",
-        "test:server": "vitest run src/server/test/e2e.spec.ts",
+        "test:server": "vitest run src/server/test --no-file-parallelism",
         "test:client": "vitest src/client"
     },
     "dependencies": {
