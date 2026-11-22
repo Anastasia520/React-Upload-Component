@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 import { createFakeTransport } from '../test-utils/fakeTransport';
+import { fileAt } from '../test-utils/folders';
 import { type UploadTransport } from '../transport/types';
 
 import { type UploadItem, type UploadQueueOptions, useUploadQueue } from './useUploadQueue';
@@ -370,6 +371,40 @@ describe('useUploadQueue', () => {
 
             expect(result.current.items[0]).toMatchObject({ status: 'rejected', error: 'File type not allowed' });
             expect(transport.upload).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('files from folders', () => {
+        it('should keep the relative path of a file found in a dropped folder, also when reporting it', async () => {
+            const onUploaded = vi.fn();
+            const { transport, calls } = createFakeTransport();
+            const { result } = renderQueue(transport, { onUploaded });
+            const photo = file('a.jpg');
+
+            act(() => result.current.add([{ file: photo, relativePath: 'photos/2024/a.jpg' }, file('b.txt')]));
+
+            expect(result.current.items[0]).toMatchObject({ file: photo, relativePath: 'photos/2024/a.jpg' });
+            expect(result.current.items[1].relativePath).toBeUndefined();
+            expect(calls[0].file).toBe(photo);
+
+            await settle(() => calls[0].resolve());
+            expect(onUploaded).toHaveBeenCalledWith(
+                expect.objectContaining({ relativePath: 'photos/2024/a.jpg' }),
+                expect.anything()
+            );
+        });
+
+        it('should take the relative path of a picked folder’s file from webkitRelativePath', () => {
+            const { transport } = createFakeTransport();
+            const { result } = renderQueue(transport);
+            const picked = fileAt('photos/a.jpg');
+            const plain = file('b.txt');
+            Object.defineProperty(plain, 'webkitRelativePath', { value: '' });
+
+            act(() => result.current.add([picked, plain]));
+
+            expect(result.current.items[0].relativePath).toBe('photos/a.jpg');
+            expect(result.current.items[1].relativePath).toBeUndefined();
         });
     });
 

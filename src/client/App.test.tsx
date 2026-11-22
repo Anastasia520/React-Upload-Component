@@ -6,7 +6,7 @@ import * as axeMatchers from 'vitest-axe/matchers';
 
 import '@testing-library/jest-dom/vitest';
 import { App } from './App';
-import { drag, filesTransfer } from './test-utils/dragEvents';
+import { drag, dropFiles, filesTransfer, folder } from './test-utils/dragEvents';
 import { createFakeTransport } from './test-utils/fakeTransport';
 import { addHiddenRule } from './test-utils/hiddenRule';
 
@@ -68,13 +68,16 @@ describe('App', () => {
         expect(within(uploads()).getAllByRole('listitem')[0]).toHaveTextContent('a.txt');
     });
 
-    it('should take files dropped anywhere on the window', () => {
+    it('should take files and folders dropped anywhere on the window', async () => {
         renderApp();
 
         drag('dragEnter');
-        expect(screen.getByText('Drop files to upload').closest('[aria-hidden]')).toHaveClass('fixed', 'visible');
+        expect(screen.getByText('Drop files or folders to upload').closest('[aria-hidden]')).toHaveClass(
+            'fixed',
+            'visible'
+        );
 
-        drag('drop', filesTransfer([new File(['a'], 'a.txt'), new File(['b'], 'b.txt')]));
+        await dropFiles(filesTransfer([new File(['a'], 'a.txt'), folder('docs', [new File(['b'], 'b.txt')])]));
         expect(within(uploads()).getAllByRole('listitem')).toHaveLength(2);
     });
 
@@ -145,7 +148,7 @@ describe('App', () => {
         await settle(() => {
             listCalls[0].resolve([{ name: 'stored.txt', size: 1 }]);
         });
-        drag('drop', filesTransfer([new File(['a'], 'a.txt')]));
+        await dropFiles(filesTransfer([new File(['a'], 'a.txt')]));
         expect(await axe(container)).toHaveNoViolations();
     });
 });

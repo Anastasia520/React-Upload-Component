@@ -1,15 +1,24 @@
 import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
-import { drag, filesTransfer, textTransfer } from '../test-utils/dragEvents';
+import { drag, dropFiles, filesTransfer, finishReading, folder, textTransfer } from '../test-utils/dragEvents';
+import { type DroppedFiles } from '../utils/collectDroppedFiles';
 
-import { useFileDrop } from './useFileDrop';
+import { type FileDropOptions, useFileDrop } from './useFileDrop';
 
-const renderDrop = () => {
+const renderDrop = (options: Partial<FileDropOptions> = {}) => {
     const onDrop = vi.fn();
-    const view = renderHook(() => useFileDrop({ onDrop }));
+    const view = renderHook(() => useFileDrop({ onDrop, ...options }));
     return { ...view, onDrop };
 };
+
+// What onDrop receives for a drop of plain files.
+const droppedFiles = (files: File[]): DroppedFiles => ({
+    files: files.map((file) => ({ file })),
+    skippedFolders: [],
+    emptyFolders: [],
+    unreadable: [],
+});
 
 describe('useFileDrop', () => {
     // Every hook listens on the shared window, so each test's hook must be unmounted before the next test.
@@ -40,30 +49,30 @@ describe('useFileDrop', () => {
         expect(result.current.isDragging).toBe(false);
     });
 
-    it('should pass dropped files on in order and stop the browser from opening them', () => {
+    it('should pass dropped files on in order and stop the browser from opening them', async () => {
         const { result, onDrop } = renderDrop();
         const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')];
 
         drag('dragEnter');
         drag('dragEnter');
         const over = drag('dragOver');
-        const drop = drag('drop', filesTransfer(files));
+        const drop = await dropFiles(filesTransfer(files));
 
         expect(over.defaultPrevented).toBe(true);
         expect(drop.defaultPrevented).toBe(true);
         expect(onDrop).toHaveBeenCalledTimes(1);
-        expect(onDrop).toHaveBeenCalledWith(files, []);
+        expect(onDrop).toHaveBeenCalledWith(droppedFiles(files));
         expect(result.current.isDragging).toBe(false);
     });
 
-    it('should ignore drags that carry no files', () => {
+    it('should ignore drags that carry no files', async () => {
         const { result, onDrop } = renderDrop();
 
         drag('dragEnter', textTransfer());
         expect(result.current.isDragging).toBe(false);
 
         const over = drag('dragOver', textTransfer());
-        const drop = drag('drop', textTransfer());
+        const drop = await dropFiles(textTransfer());
         drag('dragLeave', textTransfer());
 
         expect(over.defaultPrevented).toBe(false);
@@ -72,24 +81,70 @@ describe('useFileDrop', () => {
         expect(result.current.isDragging).toBe(false);
     });
 
-    it('should skip dropped folders and report their names', () => {
+    it('should read dropped folders and pass their files on with their paths', async () => {
         const { onDrop } = renderDrop();
+        const a = new File(['a'], 'a.txt');
+        const b = new File(['b'], 'b.txt');
+
+        await dropFiles(filesTransfer([a, folder('photos', [b])]));
+
+        expect(onDrop).toHaveBeenCalledWith({
+            ...droppedFiles([a]),
+            files: [{ file: a }, { file: b, relativePath: 'photos/b.txt' }],
+        });
+    });
+
+    it('should report reading while dropped items are read, also for overlapping drops', async () => {
+        const { result, onDrop } = renderDrop();
+        expect(result.current.isReading).toBe(false);
+
+        drag('drop', filesTransfer([folder('photos', [new File(['a'], 'a.txt')])]));
+        drag('drop', filesTransfer([folder('docs', [new File(['b'], 'b.txt')])]));
+        expect(result.current.isReading).toBe(true);
+        expect(onDrop).not.toHaveBeenCalled();
+
+        await finishReading();
+
+        expect(result.current.isReading).toBe(false);
+        expect(onDrop).toHaveBeenCalledTimes(2);
+    });
+
+    it('should skip dropped folders and report their names when folders are not allowed', async () => {
+        const { onDrop } = renderDrop({ allowFolders: false });
         const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')];
 
-        drag('drop', filesTransfer([files[0], { folder: 'photos' }, files[1]]));
+        await dropFiles(filesTransfer([files[0], folder('photos', [new File(['c'], 'c.txt')]), files[1]]));
 
-        expect(onDrop).toHaveBeenCalledWith(files, ['photos']);
+        expect(onDrop).toHaveBeenCalledWith({ ...droppedFiles(files), skippedFolders: ['photos'] });
     });
 
-    it('should report a drop of only folders, so the user can be told', () => {
-        const { onDrop } = renderDrop();
+    it('should stop reading without an error when the drop cannot be read at all', async () => {
+        const { result, onDrop } = renderDrop();
+        const broken = {
+            kind: 'file',
+            getAsFile: () => null,
+            webkitGetAsEntry: () => {
+                throw new Error('Unexpected browser failure');
+            },
+        };
 
-        drag('drop', filesTransfer([{ folder: 'photos' }, { folder: 'docs' }]));
+        await dropFiles({ types: ['Files'], items: [broken] });
 
-        expect(onDrop).toHaveBeenCalledWith([], ['photos', 'docs']);
+        expect(result.current.isReading).toBe(false);
+        expect(onDrop).not.toHaveBeenCalled();
     });
 
-    it('should call the latest onDrop without losing the drag in progress', () => {
+    it('should not pass on a drop that is still being read when unmounted', async () => {
+        const { unmount, onDrop } = renderDrop();
+
+        drag('drop', filesTransfer([folder('photos', [new File(['a'], 'a.txt')])]));
+        unmount();
+        await finishReading();
+
+        expect(onDrop).not.toHaveBeenCalled();
+    });
+
+    it('should call the latest onDrop without losing the drag in progress', async () => {
         const first = vi.fn();
         const second = vi.fn();
         const { result, rerender } = renderHook(({ onDrop }) => useFileDrop({ onDrop }), {
@@ -100,18 +155,18 @@ describe('useFileDrop', () => {
         rerender({ onDrop: second });
         expect(result.current.isDragging).toBe(true);
 
-        drag('drop');
+        await dropFiles(filesTransfer());
 
         expect(first).not.toHaveBeenCalled();
         expect(second).toHaveBeenCalledTimes(1);
     });
 
-    it('should stop listening when unmounted', () => {
+    it('should stop listening when unmounted', async () => {
         const { unmount, onDrop } = renderDrop();
 
         unmount();
         const over = drag('dragOver');
-        const drop = drag('drop');
+        const drop = await dropFiles(filesTransfer());
 
         expect(over.defaultPrevented).toBe(false);
         expect(drop.defaultPrevented).toBe(false);
@@ -154,26 +209,42 @@ describe('useFileDrop', () => {
             expect(result.current.isDragging).toBe(false);
         });
 
-        it('should take drops on the target and leave drops elsewhere to the browser', () => {
+        it('should take drops on the target and leave drops elsewhere to the browser', async () => {
             const { onDrop, zone, child } = renderZoneDrop();
             const files = [new File(['a'], 'a.txt')];
 
-            const outside = drag('drop', filesTransfer(files));
+            const outside = await dropFiles(filesTransfer(files));
             expect(outside.defaultPrevented).toBe(false);
             expect(onDrop).not.toHaveBeenCalled();
 
             const over = drag('dragOver', filesTransfer(), zone);
-            const inside = drag('drop', filesTransfer(files), child);
+            const inside = await dropFiles(filesTransfer(files), child);
             expect(over.defaultPrevented).toBe(true);
             expect(inside.defaultPrevented).toBe(true);
-            expect(onDrop).toHaveBeenCalledWith(files, []);
+            expect(onDrop).toHaveBeenCalledWith(droppedFiles(files));
         });
 
-        it('should stop listening on the target when unmounted', () => {
+        it('should drop a read in progress and stop reading when the target changes', async () => {
+            const { zone } = createZone();
+            const other = createZone().zone;
+            const onDrop = vi.fn();
+            const { result, rerender } = renderHook(({ target }) => useFileDrop({ onDrop, target }), {
+                initialProps: { target: { current: zone } },
+            });
+
+            drag('drop', filesTransfer([folder('photos', [new File(['a'], 'a.txt')])]), zone);
+            rerender({ target: { current: other } });
+            await finishReading();
+
+            expect(result.current.isReading).toBe(false);
+            expect(onDrop).not.toHaveBeenCalled();
+        });
+
+        it('should stop listening on the target when unmounted', async () => {
             const { unmount, onDrop, zone } = renderZoneDrop();
 
             unmount();
-            const drop = drag('drop', filesTransfer(), zone);
+            const drop = await dropFiles(filesTransfer(), zone);
 
             expect(drop.defaultPrevented).toBe(false);
             expect(onDrop).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { type UploadItem, type UploadStatus } from '../../hooks/useUploadQueue';
 
-import { describeQueueChanges, describeSkippedFolders } from './announcements';
+import { describeNotAdded, describeQueueChanges } from './announcements';
 
 const item = (id: string, status: UploadStatus, error?: string): UploadItem => ({
     id,
@@ -14,6 +14,9 @@ const item = (id: string, status: UploadStatus, error?: string): UploadItem => (
 
 // The same item in a new status, as the queue hook produces it.
 const as = (previous: UploadItem, status: UploadStatus, error?: string): UploadItem => ({ ...previous, status, error });
+
+// A queued file found at `relativePath` inside a dropped or picked folder.
+const inFolder = (id: string, relativePath: string): UploadItem => ({ ...item(id, 'queued'), relativePath });
 
 describe('describeQueueChanges', () => {
     it('should say nothing when nothing changed', () => {
@@ -34,6 +37,22 @@ describe('describeQueueChanges', () => {
     it('should count several added files, including files already started', () => {
         const added = [item('a', 'uploading'), item('b', 'queued'), item('c', 'queued')];
         expect(describeQueueChanges([], added)).toBe('Uploading 3 files.');
+    });
+
+    it('should name the folder when every added file comes from the same dropped or picked folder', () => {
+        expect(describeQueueChanges([], [inFolder('a', 'photos/a.txt')])).toBe('Uploading "a.txt" from "photos".');
+        expect(describeQueueChanges([], [inFolder('a', 'photos/a.txt'), inFolder('b', 'photos/2024/b.txt')])).toBe(
+            'Uploading 2 files from "photos".'
+        );
+    });
+
+    it('should only count the files when they come from several folders or not from a folder', () => {
+        expect(describeQueueChanges([], [inFolder('a', 'photos/a.txt'), inFolder('b', 'docs/b.txt')])).toBe(
+            'Uploading 2 files.'
+        );
+        expect(describeQueueChanges([], [inFolder('a', 'photos/a.txt'), item('b', 'queued')])).toBe(
+            'Uploading 2 files.'
+        );
     });
 
     it('should only count the files added in this change', () => {
@@ -124,18 +143,41 @@ describe('describeQueueChanges', () => {
     });
 });
 
-describe('describeSkippedFolders', () => {
-    it('should say nothing when no folders were skipped', () => {
-        expect(describeSkippedFolders([])).toBe('');
+describe('describeNotAdded', () => {
+    const NOTHING = { skippedFolders: [], emptyFolders: [], unreadable: [] };
+
+    it('should say nothing when everything was added', () => {
+        expect(describeNotAdded(NOTHING)).toBe('');
     });
 
-    it('should name a single skipped folder', () => {
-        expect(describeSkippedFolders(['photos'])).toBe('Folders can\'t be uploaded yet, so "photos" was skipped.');
+    it('should name a single skipped folder and count several', () => {
+        expect(describeNotAdded({ ...NOTHING, skippedFolders: ['photos'] })).toBe(
+            'Folders can\'t be uploaded here, so "photos" was skipped.'
+        );
+        expect(describeNotAdded({ ...NOTHING, skippedFolders: ['photos', 'docs', 'music'] })).toBe(
+            "Folders can't be uploaded here, so 3 folders were skipped."
+        );
     });
 
-    it('should count several skipped folders', () => {
-        expect(describeSkippedFolders(['photos', 'docs', 'music'])).toBe(
-            "Folders can't be uploaded yet, so 3 folders were skipped."
+    it('should name a single empty folder and count several', () => {
+        expect(describeNotAdded({ ...NOTHING, emptyFolders: ['photos'] })).toBe('"photos" has no files to upload.');
+        expect(describeNotAdded({ ...NOTHING, emptyFolders: ['photos', 'docs'] })).toBe(
+            '2 folders have no files to upload.'
+        );
+    });
+
+    it('should name a single unreadable item and count several', () => {
+        expect(describeNotAdded({ ...NOTHING, unreadable: ['photos/private'] })).toBe(
+            '"photos/private" couldn\'t be read.'
+        );
+        expect(describeNotAdded({ ...NOTHING, unreadable: ['photos/private', 'photos/a.jpg'] })).toBe(
+            "2 items couldn't be read."
+        );
+    });
+
+    it('should combine the messages in a fixed order', () => {
+        expect(describeNotAdded({ skippedFolders: ['a'], emptyFolders: ['b'], unreadable: ['c/d'] })).toBe(
+            'Folders can\'t be uploaded here, so "a" was skipped. "b" has no files to upload. "c/d" couldn\'t be read.'
         );
     });
 });

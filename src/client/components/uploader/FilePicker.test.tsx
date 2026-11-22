@@ -6,11 +6,14 @@ import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 
 import '@testing-library/jest-dom/vitest';
+import { fileAt, stubFolderSupport } from '../../test-utils/folders';
 import { addHiddenRule } from '../../test-utils/hiddenRule';
 
 import { FilePicker, type FilePickerProps } from './FilePicker';
 
 expect.extend(axeMatchers);
+
+const FOLDER_NOTE = "Folder contents are uploaded as individual files; folder structure isn't kept.";
 
 const renderPicker = (props: Partial<FilePickerProps> = {}) => {
     const onFiles = vi.fn();
@@ -109,9 +112,102 @@ describe('FilePicker', () => {
         expect(screen.getByRole('button', { name: 'Select files' })).toHaveFocus();
     });
 
+    it('should show its children next to the buttons', () => {
+        render(
+            <FilePicker onFiles={vi.fn()}>
+                <p>or drop files here</p>
+            </FilePicker>
+        );
+
+        expect(screen.getByText('or drop files here')).toBeInTheDocument();
+    });
+
     it('should have no accessibility violations', async () => {
         const { container } = renderPicker({ accept: '.pdf' });
 
         expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('should not offer folders where the browser cannot pick them', () => {
+        renderPicker({ allowFolders: true });
+
+        expect(screen.queryByRole('button', { name: 'Select folder' })).not.toBeInTheDocument();
+        expect(screen.queryByText(FOLDER_NOTE)).not.toBeInTheDocument();
+    });
+
+    describe('folders', () => {
+        stubFolderSupport();
+
+        const folderButton = (): HTMLElement => screen.getByRole('button', { name: 'Select folder' });
+
+        const folderInput = (container: HTMLElement): HTMLInputElement => {
+            const input = container.querySelector<HTMLInputElement>('input[webkitdirectory]');
+            if (!input) {
+                throw new Error('folder input not rendered');
+            }
+            return input;
+        };
+
+        it('should offer a folder button after the files button, described by the visible folder note', async () => {
+            renderPicker({ allowFolders: true });
+
+            await userEvent.tab();
+            await userEvent.tab();
+            expect(folderButton()).toHaveFocus();
+            expect(folderButton()).toHaveAccessibleDescription(FOLDER_NOTE);
+            expect(screen.getByText(FOLDER_NOTE)).toBeVisible();
+
+            await userEvent.tab();
+            expect(document.body).toHaveFocus();
+        });
+
+        it('should open a hidden folder input without accept once per click or key press', async () => {
+            const { container } = renderPicker({ allowFolders: true, accept: '.pdf' });
+            const input = folderInput(container);
+            const clicks = countClicks(input);
+
+            await userEvent.click(folderButton());
+            expect(clicks()).toBe(1);
+            await userEvent.keyboard('{Enter}');
+            expect(clicks()).toBe(2);
+            await userEvent.keyboard(' ');
+            expect(clicks()).toBe(3);
+
+            expect(input).not.toBeVisible();
+            expect(input).not.toHaveAttribute('accept');
+        });
+
+        it('should pass on the folder’s files without hidden and system files, and reset the input', async () => {
+            const { container, onFiles } = renderPicker({ allowFolders: true });
+            const input = folderInput(container);
+            const files = [fileAt('photos/a.jpg'), fileAt('photos/2024/b.jpg')];
+
+            await userEvent.upload(input, [
+                files[0],
+                fileAt('photos/.DS_Store'),
+                fileAt('photos/.git/HEAD'),
+                files[1],
+                fileAt('photos/Thumbs.db'),
+            ]);
+
+            expect(onFiles).toHaveBeenCalledWith(files);
+            expect(input.value).toBe('');
+        });
+
+        it.each([
+            ['folders are not allowed', {}],
+            ['only one file may be picked', { allowFolders: true, multiple: false }],
+        ])('should not offer folders when %s', (_, props) => {
+            renderPicker(props);
+
+            expect(screen.queryByRole('button', { name: 'Select folder' })).not.toBeInTheDocument();
+            expect(screen.queryByText(FOLDER_NOTE)).not.toBeInTheDocument();
+        });
+
+        it('should have no accessibility violations with the folder button', async () => {
+            const { container } = renderPicker({ allowFolders: true });
+
+            expect(await axe(container)).toHaveNoViolations();
+        });
     });
 });

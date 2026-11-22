@@ -5,8 +5,9 @@ import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 
 import '@testing-library/jest-dom/vitest';
-import { drag, filesTransfer } from '../../test-utils/dragEvents';
+import { drag, dropFiles, filesTransfer, finishReading, folder } from '../../test-utils/dragEvents';
 import { createFakeTransport } from '../../test-utils/fakeTransport';
+import { fileAt, stubFolderSupport } from '../../test-utils/folders';
 import { addHiddenRule } from '../../test-utils/hiddenRule';
 
 import { FileUploader, type FileUploaderProps } from './FileUploader';
@@ -15,7 +16,8 @@ expect.extend(axeMatchers);
 
 const file = (name: string, content = 'hello'): File => new File([content], name);
 
-const FOLDER_NOTE = 'Folders can\'t be uploaded yet, so "photos" was skipped.';
+const EMPTY_NOTE = '"photos" has no files to upload.';
+const SKIPPED_NOTE = 'Folders can\'t be uploaded here, so "photos" was skipped.';
 // The visible note, not its copy in the live region.
 const IGNORE_LIVE_REGION = { ignore: '[role="status"] *' };
 
@@ -32,7 +34,7 @@ const renderUploader = (props: Partial<FileUploaderProps> = {}) => {
 const pickerButton = (): HTMLElement => screen.getByRole('button', { name: /^Select file/ });
 const rows = (): HTMLElement[] => screen.queryAllByRole('listitem');
 const liveRegion = (): HTMLElement => screen.getByRole('status');
-const overlay = (): HTMLElement | null => screen.getByText('Drop files to upload').closest('[aria-hidden]');
+const overlay = (): HTMLElement | null => screen.getByText(/^Drop files/).closest('[aria-hidden]');
 
 // Settles the transport's promises inside act, so the queue's state updates are applied.
 const settle = async (action: () => void): Promise<void> => {
@@ -61,7 +63,8 @@ describe('FileUploader', () => {
             const { container } = renderUploader();
 
             expect(pickerButton()).toHaveTextContent('Select files');
-            expect(screen.getByText('or drop files here')).toBeInTheDocument();
+            // Dropping folders works in every desktop browser, even where the folder button can't be offered.
+            expect(screen.getByText('or drop files or folders here')).toBeInTheDocument();
             expect(screen.queryByRole('list')).not.toBeInTheDocument();
             expect(liveRegion()).toBeEmptyDOMElement();
             expect(await axe(container)).toHaveNoViolations();
@@ -80,29 +83,30 @@ describe('FileUploader', () => {
     });
 
     describe('drop target', () => {
-        it('should take drops on itself by default, and leave drops elsewhere to the browser', () => {
+        it('should take drops on itself by default, and leave drops elsewhere to the browser', async () => {
             renderUploader();
+            expect(screen.getByText('or drop files or folders here')).toBeInTheDocument();
 
-            const outside = drag('drop', filesTransfer([file('outside.txt')]));
+            const outside = await dropFiles(filesTransfer([file('outside.txt')]));
             expect(outside.defaultPrevented).toBe(false);
             expect(rows()).toHaveLength(0);
 
             drag('dragEnter', filesTransfer(), pickerButton());
             expect(overlay()).toHaveClass('absolute', 'visible');
 
-            drag('drop', filesTransfer([file('a.txt')]), pickerButton());
+            await dropFiles(filesTransfer([file('a.txt')]), pickerButton());
             expect(rows()).toHaveLength(1);
             expect(overlay()).toHaveClass('invisible');
         });
 
-        it('should take drops anywhere on the window when asked to', () => {
+        it('should take drops anywhere on the window when asked to', async () => {
             renderUploader({ dropTarget: 'window' });
-            expect(screen.getByText('or drop files anywhere on the page')).toBeInTheDocument();
+            expect(screen.getByText('or drop files or folders anywhere on the page')).toBeInTheDocument();
 
             drag('dragEnter');
             expect(overlay()).toHaveClass('fixed', 'visible');
 
-            const drop = drag('drop', filesTransfer([file('a.txt'), file('b.txt')]));
+            const drop = await dropFiles(filesTransfer([file('a.txt'), file('b.txt')]));
             expect(drop.defaultPrevented).toBe(true);
             expect(rows()).toHaveLength(2);
             expect(overlay()).toHaveClass('invisible');
@@ -110,23 +114,28 @@ describe('FileUploader', () => {
     });
 
     describe('restrictions', () => {
-        it('should enforce accept on dropped files', () => {
+        it('should enforce accept on dropped files', async () => {
             const { transport } = renderUploader({ accept: '.png' });
 
-            drag('drop', filesTransfer([file('a.exe')]), pickerButton());
+            await dropFiles(filesTransfer([file('a.exe')]), pickerButton());
 
             expect(rows()[0]).toHaveTextContent('Not uploaded: File type not allowed');
             expect(transport.upload).not.toHaveBeenCalled();
         });
 
-        it('should keep only one file when multiple is false', () => {
+        it('should keep only one file and skip folders when multiple is false', async () => {
             renderUploader({ multiple: false });
             expect(pickerButton()).toHaveTextContent('Select file');
+            expect(screen.getByText('or drop files here')).toBeInTheDocument();
 
-            drag('drop', filesTransfer([file('a.txt'), file('b.txt')]), pickerButton());
+            await dropFiles(
+                filesTransfer([file('a.txt'), folder('photos', [file('b.txt')]), file('c.txt')]),
+                pickerButton()
+            );
 
             expect(rows()).toHaveLength(1);
             expect(rows()[0]).toHaveTextContent('a.txt');
+            expect(screen.getByText(SKIPPED_NOTE, IGNORE_LIVE_REGION)).toBeVisible();
         });
 
         it('should show the message of a validate rejection', async () => {
@@ -191,36 +200,44 @@ describe('FileUploader', () => {
             expect(liveRegion()).toHaveTextContent('Cancelled "a.txt".');
         });
 
-        it('should announce skipped folders and show the note until files are added again', async () => {
+        it('should announce what a drop could not add and show the note until files are added again', async () => {
             const { input } = renderUploader();
 
-            drag('drop', filesTransfer([{ folder: 'photos' }]), pickerButton());
+            await dropFiles(filesTransfer([folder('photos')]), pickerButton());
 
-            expect(liveRegion()).toHaveTextContent(FOLDER_NOTE);
-            expect(screen.getByText(FOLDER_NOTE, IGNORE_LIVE_REGION)).toBeVisible();
+            expect(liveRegion()).toHaveTextContent(EMPTY_NOTE);
+            expect(screen.getByText(EMPTY_NOTE, IGNORE_LIVE_REGION)).toBeVisible();
 
             await userEvent.upload(input, [file('a.txt')]);
 
-            expect(screen.queryByText(FOLDER_NOTE, IGNORE_LIVE_REGION)).not.toBeInTheDocument();
+            expect(screen.queryByText(EMPTY_NOTE, IGNORE_LIVE_REGION)).not.toBeInTheDocument();
         });
 
-        it('should announce the files and the skipped folders of one drop together', () => {
+        it('should announce the files and what was not added of one drop together', async () => {
             renderUploader();
 
-            drag('drop', filesTransfer([file('a.txt'), { folder: 'photos' }]), pickerButton());
+            await dropFiles(
+                filesTransfer([
+                    folder('docs', [file('a.txt'), folder('private', [], { unreadable: true })]),
+                    folder('photos'),
+                ]),
+                pickerButton()
+            );
 
-            expect(liveRegion()).toHaveTextContent(`Uploading "a.txt". ${FOLDER_NOTE}`);
+            expect(liveRegion()).toHaveTextContent(
+                `Uploading "a.txt" from "docs". ${EMPTY_NOTE} "docs/private" couldn't be read.`
+            );
         });
 
-        it('should announce the same message again as a new node', () => {
+        it('should announce the same message again as a new node', async () => {
             renderUploader();
 
-            drag('drop', filesTransfer([{ folder: 'photos' }]), pickerButton());
+            await dropFiles(filesTransfer([folder('photos')]), pickerButton());
             const first = liveRegion().firstElementChild;
-            drag('drop', filesTransfer([{ folder: 'photos' }]), pickerButton());
+            await dropFiles(filesTransfer([folder('photos')]), pickerButton());
             const second = liveRegion().firstElementChild;
 
-            expect(second).toHaveTextContent(FOLDER_NOTE);
+            expect(second).toHaveTextContent(EMPTY_NOTE);
             expect(second).not.toBe(first);
         });
     });
@@ -282,13 +299,82 @@ describe('FileUploader', () => {
         });
     });
 
-    it('should have no accessibility violations with rows and the folder note shown', async () => {
-        const { container } = renderUploader({ accept: '.txt' });
+    describe('folders', () => {
+        stubFolderSupport();
 
-        drag('drop', filesTransfer([file('a.txt'), file('b.exe'), { folder: 'photos' }]), pickerButton());
+        it('should upload a picked folder’s files with their paths and name the folder', async () => {
+            const { container } = renderUploader();
+            const input = container.querySelector<HTMLInputElement>('input[webkitdirectory]');
+            if (!input) {
+                throw new Error('folder input not rendered');
+            }
+            expect(screen.getByRole('button', { name: 'Select folder' })).toBeInTheDocument();
 
-        expect(rows()).toHaveLength(2);
-        expect(within(container).getByText(FOLDER_NOTE, IGNORE_LIVE_REGION)).toBeInTheDocument();
-        expect(await axe(container)).toHaveNoViolations();
+            await userEvent.upload(input, [fileAt('photos/a.jpg'), fileAt('photos/2024/b.jpg')]);
+
+            expect(rows()).toHaveLength(2);
+            expect(rows()[1]).toHaveTextContent('photos/2024/b.jpg');
+            expect(liveRegion()).toHaveTextContent('Uploading 2 files from "photos".');
+        });
+
+        it('should flatten a dropped folder into rows with paths and name the folder', async () => {
+            const { transport } = renderUploader();
+
+            await dropFiles(
+                filesTransfer([folder('photos', [file('a.jpg'), folder('2024', [file('b.jpg'), file('c.jpg')])])]),
+                pickerButton()
+            );
+
+            expect(rows()).toHaveLength(3);
+            expect(rows()[0]).toHaveTextContent('photos/a.jpg');
+            expect(rows()[2]).toHaveTextContent('photos/2024/c.jpg');
+            expect(transport.upload).toHaveBeenCalledTimes(3);
+            expect(liveRegion()).toHaveTextContent('Uploading 3 files from "photos".');
+        });
+
+        it('should say that folders are being read until their files are added', async () => {
+            renderUploader();
+
+            drag('drop', filesTransfer([folder('photos', [file('a.jpg')])]), pickerButton());
+            expect(screen.getByText('Reading folders…')).toBeVisible();
+            expect(rows()).toHaveLength(0);
+
+            await finishReading();
+            expect(screen.queryByText('Reading folders…')).not.toBeInTheDocument();
+            expect(rows()).toHaveLength(1);
+        });
+
+        it('should mention folders in the drop overlay', () => {
+            renderUploader();
+
+            expect(overlay()).toHaveTextContent('Drop files or folders to upload');
+            expect(overlay()).toHaveTextContent("folder structure isn't kept");
+        });
+
+        it('should offer files only and skip dropped folders when folders are not allowed', async () => {
+            renderUploader({ allowFolders: false });
+            expect(screen.queryByRole('button', { name: 'Select folder' })).not.toBeInTheDocument();
+            expect(screen.getByText('or drop files here')).toBeInTheDocument();
+            expect(overlay()).toHaveTextContent(/^Drop files to upload$/);
+
+            await dropFiles(filesTransfer([file('a.txt'), folder('photos', [file('b.txt')])]), pickerButton());
+
+            expect(rows()).toHaveLength(1);
+            expect(liveRegion()).toHaveTextContent(`Uploading "a.txt". ${SKIPPED_NOTE}`);
+            expect(screen.getByText(SKIPPED_NOTE, IGNORE_LIVE_REGION)).toBeVisible();
+        });
+
+        it('should have no accessibility violations with the folder button, rows and a note shown', async () => {
+            const { container } = renderUploader({ accept: '.txt' });
+
+            await dropFiles(
+                filesTransfer([file('a.txt'), file('b.exe'), folder('docs', [file('c.txt')]), folder('photos')]),
+                pickerButton()
+            );
+
+            expect(rows()).toHaveLength(3);
+            expect(within(container).getByText(EMPTY_NOTE, IGNORE_LIVE_REGION)).toBeInTheDocument();
+            expect(await axe(container)).toHaveNoViolations();
+        });
     });
 });

@@ -175,4 +175,21 @@ describe('UploadQueueRow', () => {
 
         expect(await axe(container)).toHaveNoViolations();
     });
+
+    it('should show where a file from a folder came from under its name, truncated like the name', async () => {
+        const relativePath = `photos/${'nested/'.repeat(30)}${NAME}`;
+        const { container } = renderRow(makeItem({ relativePath }));
+
+        const path = screen.getByTitle(relativePath);
+        expect(path).toHaveTextContent(relativePath);
+        expect(path).toHaveClass('truncate');
+        expect(screen.getByTitle(NAME).nextElementSibling).toBe(path);
+        expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('should show no path for a file that did not come from a folder', () => {
+        renderRow(ITEMS.uploading);
+
+        expect(screen.queryByText(/\//)).not.toBeInTheDocument();
+    });
 });

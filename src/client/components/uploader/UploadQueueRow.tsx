@@ -72,6 +72,11 @@ const Row = (props: UploadQueueRowProps): ReactElement => {
                     <p className="truncate font-medium text-primary" title={name}>
                         {name}
                     </p>
+                    {item.relativePath && (
+                        <p className="truncate text-sm text-secondary" title={item.relativePath}>
+                            {item.relativePath}
+                        </p>
+                    )}
                     <p className="flex flex-wrap gap-x-2 text-sm">
                         <span className="text-secondary">{formatBytes(size)}</span>
                         <span className={`min-w-0 break-words ${status.className}`}>{status.text}</span>

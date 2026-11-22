@@ -9,7 +9,9 @@ import { DropOverlay } from './DropOverlay';
 expect.extend(axeMatchers);
 
 // The outermost element, which carries the visibility classes. happy-dom loads no CSS, so classes are checked.
-const overlay = (): HTMLElement | null => screen.getByText('Drop files to upload').closest('[aria-hidden]');
+const overlay = (): HTMLElement | null => screen.getByText(/^Drop files/).closest('[aria-hidden]');
+
+const FOLDER_NOTE = "Folder contents are uploaded as individual files; folder structure isn't kept.";
 
 describe('DropOverlay', () => {
     afterEach(() => {
@@ -45,8 +47,21 @@ describe('DropOverlay', () => {
         expect(overlay()).toHaveClass('motion-reduce:transition-none');
     });
 
+    it('should mention only files when folders are not allowed', () => {
+        render(<DropOverlay visible />);
+
+        expect(overlay()).toHaveTextContent(/^Drop files to upload$/);
+    });
+
+    it('should mention folders and repeat the folder note when folders are allowed', () => {
+        render(<DropOverlay visible allowFolders />);
+
+        expect(screen.getByText('Drop files or folders to upload')).toBeInTheDocument();
+        expect(screen.getByText(FOLDER_NOTE)).toBeInTheDocument();
+    });
+
     it.each([true, false])('should have no accessibility violations (visible: %s)', async (visible) => {
-        const { container } = render(<DropOverlay visible={visible} />);
+        const { container } = render(<DropOverlay visible={visible} allowFolders />);
 
         expect(await axe(container)).toHaveNoViolations();
     });

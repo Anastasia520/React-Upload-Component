@@ -6,7 +6,18 @@ import { matchesAccept } from '../utils/matchesAccept';
 // `rejected`: refused by `accept` or `validate` before uploading, so retrying can't help.
 export type UploadStatus = 'queued' | 'uploading' | 'done' | 'error' | 'cancelled' | 'rejected';
 
-export type UploadItem = { id: string; file: File; status: UploadStatus; loadedBytes: number; error?: string };
+export type UploadItem = {
+    id: string;
+    file: File;
+    // Where the file was found inside a chosen folder ("photos/2024/a.jpg"). The upload itself uses only the name.
+    relativePath?: string;
+    status: UploadStatus;
+    loadedBytes: number;
+    error?: string;
+};
+
+// A file with its path inside a dropped folder.
+export type FileWithPath = { file: File; relativePath?: string };
 
 export type UploadQueueOptions = {
     maxConcurrentFiles?: number;
@@ -23,7 +34,8 @@ export type UploadQueueOptions = {
 
 export type UploadQueue = {
     items: UploadItem[];
-    add: (files: Iterable<File>) => void;
+    // A plain File takes its relative path from `webkitRelativePath`, which a folder input (webkitdirectory) sets.
+    add: (files: Iterable<File | FileWithPath>) => void;
     cancel: (id: string) => void;
     cancelAll: () => void;
     retry: (id: string) => void;
@@ -208,15 +220,17 @@ export const useUploadQueue = (transport: UploadTransport, options: UploadQueueO
         };
     }, []);
 
-    const add = useCallback((files: Iterable<File>): void => {
+    const add = useCallback((files: Iterable<File | FileWithPath>): void => {
         const { accept, multiple = true, validate } = latest.current.options;
         const selected = [...files].slice(0, multiple ? undefined : 1);
-        const added = selected.map((file): UploadItem => {
+        const added = selected.map((entry): UploadItem => {
+            const { file, relativePath } =
+                entry instanceof File ? { file: entry, relativePath: entry.webkitRelativePath || undefined } : entry;
             const id = `upload-${++lastId}`;
             const error = matchesAccept(file, accept) ? validate?.(file) : NOT_ALLOWED;
             return error
-                ? { id, file, status: 'rejected', loadedBytes: 0, error }
-                : { id, file, status: 'queued', loadedBytes: 0 };
+                ? { id, file, relativePath, status: 'rejected', loadedBytes: 0, error }
+                : { id, file, relativePath, status: 'queued', loadedBytes: 0 };
         });
         dispatch({ type: 'add', items: added });
     }, []);
