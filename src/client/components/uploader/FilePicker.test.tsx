@@ -100,7 +100,15 @@ describe('FilePicker', () => {
         const { input } = renderPicker({ multiple: false });
 
         expect(input.multiple).toBe(false);
+        expect(input).toHaveAttribute('aria-label', 'Select file');
         expect(screen.getByRole('button', { name: 'Select file' })).toBeInTheDocument();
+    });
+
+    // Hidden inputs aren't in the accessibility tree, but audit tools such as WAVE still report them as unlabelled.
+    it('should name the hidden input like its button', () => {
+        const { input } = renderPicker();
+
+        expect(input).toHaveAttribute('aria-label', 'Select files');
     });
 
     it('should forward its ref to the button, so it can be focused', () => {
@@ -175,6 +183,7 @@ describe('FilePicker', () => {
 
             expect(input).not.toBeVisible();
             expect(input).not.toHaveAttribute('accept');
+            expect(input).toHaveAttribute('aria-label', 'Select folder');
         });
 
         it('should pass on the folder’s files without hidden and system files, and reset the input', async () => {

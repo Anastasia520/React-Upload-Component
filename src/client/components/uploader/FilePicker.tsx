@@ -40,6 +40,7 @@ export const FilePicker = forwardRef<HTMLButtonElement, FilePickerProps>(
         const folderInputRef = useRef<HTMLInputElement>(null);
         const folderNoteId = useId();
         const showFolders = allowFolders && multiple && canPickFolders();
+        const filesLabel = multiple ? 'Select files' : 'Select file';
 
         const handleFolder = (event: ChangeEvent<HTMLInputElement>): void => {
             onFiles(takeFiles(event.target).filter((file) => !isHiddenPath(file.webkitRelativePath)));
@@ -54,13 +55,15 @@ export const FilePicker = forwardRef<HTMLButtonElement, FilePickerProps>(
                         className={`${BUTTON_CLASS} bg-primary text-surface hover:bg-primary-hover`}
                         onClick={() => filesInputRef.current?.click()}
                     >
-                        {multiple ? 'Select files' : 'Select file'}
+                        {filesLabel}
                     </button>
-                    {/* `hidden` keeps it out of the tab order and the accessibility tree; click() still opens it. */}
+                    {/* `hidden` keeps it out of the tab order and the accessibility tree; click() still opens it.
+                        The label is for audit tools such as WAVE, which still report hidden inputs as unlabelled. */}
                     <input
                         ref={filesInputRef}
                         type="file"
                         hidden
+                        aria-label={filesLabel}
                         accept={accept}
                         multiple={multiple}
                         onChange={(event) => onFiles(takeFiles(event.target))}
@@ -81,6 +84,7 @@ export const FilePicker = forwardRef<HTMLButtonElement, FilePickerProps>(
                                 ref={folderInputRef}
                                 type="file"
                                 hidden
+                                aria-label="Select folder"
                                 multiple
                                 {...FOLDER_INPUT}
                                 onChange={handleFolder}
