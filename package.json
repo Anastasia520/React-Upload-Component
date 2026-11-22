@@ -10,7 +10,9 @@
         "lint": "eslint --ext .ts,.tsx .",
         "typecheck": "tsc --noEmit",
         "test:server": "vitest run src/server/test --no-file-parallelism",
-        "test:client": "vitest src/client"
+        "test:client": "vitest src/client",
+        "seed": "tsx src/server/scripts/seed-files.ts seed",
+        "seed:clean": "tsx src/server/scripts/seed-files.ts clean"
     },
     "dependencies": {
         "body-parser": "^1.20.2",
